@@ -2,15 +2,13 @@ package com.ikea.security.jwt;
 
 public class JwtConstants {
 
-    private JwtConstants() {
-    }
+    private JwtConstants() {}
 
-    public static final String ISSUER = "T6qvzx6ZoSH468SJSccBB1jGMp3jT9Dd";
+    public static final String ISSUER =
+            System.getenv().getOrDefault("JWT_ISSUER", "ikea-client");
 
-    public static final String SECRET = "fnnmqcd42q1XJseZfPI8YgLdQPiBer5Q";
+    public static final String SECRET =
+            System.getenv().getOrDefault("JWT_SECRET", "change-me");
 
     public static final long EXPIRATION = 3600000;
 }
-
-
-

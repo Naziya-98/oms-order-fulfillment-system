@@ -1,9 +1,12 @@
 # IntelliJ IDEA
 .idea/
 *.iml
+out/
 
 # Maven
 target/
+*.jar
+*.war
 
 # Logs
 *.log
@@ -13,11 +16,16 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Environment
+# Environment / Secrets (VERY IMPORTANT)
 .env
+*.env
+*.secret
 
 # Maven Wrapper JAR
 !.mvn/wrapper/maven-wrapper.jar
 
-# Orchestrator delivery/reference documentation
+# Docker / Local configs (optional but recommended)
+*.pid
+
+# Orchestrator reference / documentation folder
 oms-poc-saga-orchestration/
