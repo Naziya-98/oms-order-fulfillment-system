@@ -4,6 +4,8 @@ import com.ikea.oms.order_service.dto.InventoryResponseDTO;
 import com.ikea.oms.order_service.dto.OrderRequestDTO;
 import com.ikea.oms.order_service.dto.OrderResponseDTO;
 import com.ikea.oms.order_service.entity.Order;
+import com.ikea.oms.order_service.entity.OrderItem;
+import com.ikea.oms.order_service.entity.OrderStatus;
 import com.ikea.oms.order_service.event.OrderCreatedEvent;
 import com.ikea.oms.order_service.exception.InsufficientInventoryException;
 import com.ikea.oms.order_service.exception.InventoryNotFoundException;
@@ -35,13 +37,19 @@ public class OrderService {
 
     public OrderResponseDTO createOrder(OrderRequestDTO request) {
 
-        log.info("Order creation started. SKU={}, Quantity={}", request.getSkuCode(), request.getQuantity());
+        log.info("Order creation started. SKU={}, Quantity={}",
+                request.getSkuCode(),
+                request.getQuantity());
 
         Order order = new Order();
 
+        // Customer Details
+        order.setCustomerName(request.getCustomerName());
+        order.setCustomerEmail(request.getCustomerEmail());
+        order.setShippingAddress(request.getShippingAddress());
+
         order.setOrderNumber("ORD" + System.currentTimeMillis());
-        order.setSkuCode(request.getSkuCode());
-        order.setQuantity(request.getQuantity());
+        order.setStatus(OrderStatus.CREATED);
 
         log.info("Generated Order Number={}", order.getOrderNumber());
 
@@ -60,34 +68,57 @@ public class OrderService {
 
         } catch (Exception e) {
 
-            log.error("Inventory lookup failed for SKU={}", request.getSkuCode(), e);
+            log.error("Inventory lookup failed for SKU={}",
+                    request.getSkuCode(),
+                    e);
 
             throw new InventoryNotFoundException(
-                    "Inventory not found for SKU: " + request.getSkuCode()
-            );
+                    "Inventory not found for SKU: " + request.getSkuCode());
         }
 
         if (inventoryResponse == null) {
 
-            log.error("Inventory response is null for SKU={}", request.getSkuCode());
+            log.error("Inventory response is null for SKU={}",
+                    request.getSkuCode());
 
             throw new InventoryNotFoundException("Inventory not found");
         }
 
-        log.info("Inventory found. SKU={}, AvailableQuantity={}", inventoryResponse.getSkuCode(), inventoryResponse.getQuantity());
+        log.info(
+                "Inventory found. SKU={}, ProductName={}, UnitPrice={}, AvailableQuantity={}",
+                inventoryResponse.getSkuCode(),
+                inventoryResponse.getProductName(),
+                inventoryResponse.getUnitPrice(),
+                inventoryResponse.getQuantity()
+        );
 
         log.info("Validating inventory availability");
 
         if (request.getQuantity() > inventoryResponse.getQuantity()) {
 
-            log.error("Insufficient inventory. Requested={}, Available={}", request.getQuantity(), inventoryResponse.getQuantity());
+            log.error(
+                    "Insufficient inventory. Requested={}, Available={}",
+                    request.getQuantity(),
+                    inventoryResponse.getQuantity());
 
             throw new InsufficientInventoryException(
-                    "Insufficient Inventory Available"
-            );
+                    "Insufficient Inventory Available");
         }
 
-        log.info("Updating inventory. SKU={}, OrderedQuantity={}", request.getSkuCode(), request.getQuantity());
+        OrderItem orderItem = new OrderItem();
+
+        orderItem.setSkuCode(inventoryResponse.getSkuCode());
+        orderItem.setProductName(inventoryResponse.getProductName());
+        orderItem.setUnitPrice(inventoryResponse.getUnitPrice());
+        orderItem.setQuantity(request.getQuantity());
+
+        orderItem.setOrder(order);
+
+        order.getOrderItems().add(orderItem);
+
+        log.info("Updating inventory. SKU={}, OrderedQuantity={}",
+                request.getSkuCode(),
+                request.getQuantity());
 
         InventoryResponseDTO updatedInventory =
                 webClient.patch()
@@ -99,38 +130,61 @@ public class OrderService {
                         .bodyToMono(InventoryResponseDTO.class)
                         .block();
 
+        order.setStatus(OrderStatus.INVENTORY_RESERVED);
+
+        log.info(
+                "Order {} status updated to INVENTORY_RESERVED",
+                order.getOrderNumber());
+
         if (updatedInventory != null) {
 
-            log.info("Inventory updated successfully. RemainingQuantity={}", updatedInventory.getQuantity());
+            log.info(
+                    "Inventory updated successfully. RemainingQuantity={}",
+                    updatedInventory.getQuantity());
         }
 
-        log.info("Saving order into database. OrderNumber={}", order.getOrderNumber());
+        log.info("Saving order into database. OrderNumber={}",
+                order.getOrderNumber());
 
         Order savedOrder = orderRepository.save(order);
 
-        log.info("Order saved successfully. OrderId={}, OrderNumber={}", savedOrder.getId(), savedOrder.getOrderNumber());
-
-        log.info("Creating OrderCreatedEvent for OrderNumber={}", savedOrder.getOrderNumber());
-
-        OrderCreatedEvent event = new OrderCreatedEvent(
+        log.info(
+                "Order saved successfully. OrderId={}, OrderNumber={}",
                 savedOrder.getId(),
-                savedOrder.getOrderNumber(),
-                savedOrder.getSkuCode(),
-                savedOrder.getQuantity()
-        );
+                savedOrder.getOrderNumber());
+
+        log.info("Creating OrderCreatedEvent for OrderNumber={}",
+                savedOrder.getOrderNumber());
+
+        OrderItem savedItem = savedOrder.getOrderItems().get(0);
+
+        OrderCreatedEvent event =
+                new OrderCreatedEvent(
+                        savedOrder.getId(),
+                        savedOrder.getOrderNumber(),
+                        savedItem.getSkuCode(),
+                        savedItem.getQuantity()
+                );
 
         orderProducer.publishOrderEvent(event);
 
-        log.info("Kafka event published for OrderNumber={}", savedOrder.getOrderNumber());
+        log.info("Kafka event published for OrderNumber={}",
+                savedOrder.getOrderNumber());
 
         OrderResponseDTO response = new OrderResponseDTO();
 
         response.setId(savedOrder.getId());
         response.setOrderNumber(savedOrder.getOrderNumber());
-        response.setSkuCode(savedOrder.getSkuCode());
-        response.setQuantity(savedOrder.getQuantity());
+        response.setSkuCode(savedItem.getSkuCode());
+        response.setQuantity(savedItem.getQuantity());
 
-        log.info("Order creation completed successfully. OrderNumber={}", savedOrder.getOrderNumber());
+        // Customer Details
+        response.setCustomerName(savedOrder.getCustomerName());
+        response.setCustomerEmail(savedOrder.getCustomerEmail());
+        response.setShippingAddress(savedOrder.getShippingAddress());
+
+        log.info("Order creation completed successfully. OrderNumber={}",
+                savedOrder.getOrderNumber());
 
         return response;
     }
@@ -151,8 +205,16 @@ public class OrderService {
 
                     response.setId(order.getId());
                     response.setOrderNumber(order.getOrderNumber());
-                    response.setSkuCode(order.getSkuCode());
-                    response.setQuantity(order.getQuantity());
+
+                    OrderItem item = order.getOrderItems().get(0);
+
+                    response.setSkuCode(item.getSkuCode());
+                    response.setQuantity(item.getQuantity());
+
+                    // Customer Details
+                    response.setCustomerName(order.getCustomerName());
+                    response.setCustomerEmail(order.getCustomerEmail());
+                    response.setShippingAddress(order.getShippingAddress());
 
                     return response;
                 })

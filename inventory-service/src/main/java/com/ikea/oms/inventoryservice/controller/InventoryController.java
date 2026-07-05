@@ -50,4 +50,19 @@ public class InventoryController {
                 quantity);
     }
 
+    @PatchMapping("/stock/{skuCode}/{quantity}")
+    public InventoryResponseDTO updateInventoryStock(
+            @PathVariable String skuCode,
+            @PathVariable Integer quantity) {
+
+        log.info(
+                "Manual stock update request received. SKU={}, NewQuantity={}",
+                skuCode,
+                quantity);
+
+        return inventoryService.updateInventoryStock(
+                skuCode,
+                quantity);
+    }
+
 }

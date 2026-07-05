@@ -7,6 +7,10 @@ public class OrderResponseDTO {
     private String orderNumber;
     private String skuCode;
     private Integer quantity;
+    private String customerName;
 
+    private String customerEmail;
+
+    private String shippingAddress;
 
 }
