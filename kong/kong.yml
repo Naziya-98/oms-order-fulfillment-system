@@ -1,236 +1,80 @@
 _format_version: "3.0"
+
 consumers:
-- acls:
-  - group: customer-group
-  keyauth_credentials:
-  - key: HJXdURwPe4NVLX0Ie0E9JaWGH7uHgr22
-  username: customer-api-client
-- acls:
-  - group: customer-group
-  jwt_secrets:
-  - algorithm: HS256
-    key: T6qvzx6ZoSH468SJSccBB1jGMp3jT9Dd
-    secret: fnnmqcd42q1XJseZfPI8YgLdQPiBer5Q
-  username: ikea-client
-- acls:
-  - group: warehouse-group
-  keyauth_credentials:
-  - key: tNIyruuSgmaZIduxW0Gx1sxa60agIQiB
-  username: warehouse-client
+  - username: customer-api-client
+    acls:
+      - group: customer-group
+    keyauth_credentials:
+      - key: ${CUSTOMER_API_KEY}
+
+  - username: ikea-client
+    acls:
+      - group: customer-group
+    jwt_secrets:
+      - algorithm: HS256
+        key: ikea-client-key
+        secret: ${JWT_SECRET}
+
+  - username: warehouse-client
+    acls:
+      - group: warehouse-group
+    keyauth_credentials:
+      - key: ${WAREHOUSE_API_KEY}
+
 services:
-- connect_timeout: 60000
-  enabled: true
-  host: host.docker.internal
-  name: inventory-service
-  plugins:
-  - config:
-      custom_fields_by_lua: null
-      path: /tmp/kong.log
-      reopen: false
-    enabled: true
-    name: file-log
-    protocols:
-    - grpc
-    - grpcs
-    - http
-    - https
-  - config:
-      anonymous: null
-      hide_credentials: false
-      key_in_body: false
-      key_in_header: true
-      key_in_query: true
-      key_names:
-      - apikey
-      realm: null
-      run_on_preflight: true
-    enabled: true
-    name: key-auth
-    protocols:
-    - grpc
-    - grpcs
-    - http
-    - https
-  - config:
-      day: null
-      error_code: 429
-      error_message: API rate limit exceeded
-      fault_tolerant: true
-      header_name: null
-      hide_client_headers: false
-      hour: null
-      limit_by: consumer
-      minute: 6
-      month: null
-      path: null
-      policy: local
-      redis:
-        database: 0
-        host: null
-        password: null
-        port: 6379
-        server_name: null
-        ssl: false
-        ssl_verify: false
-        timeout: 2000
-        username: null
-      redis_database: 0
-      redis_host: null
-      redis_password: null
-      redis_port: 6379
-      redis_server_name: null
-      redis_ssl: false
-      redis_ssl_verify: false
-      redis_timeout: 2000
-      redis_username: null
-      second: null
-      sync_rate: -1
-      year: null
-    enabled: true
-    name: rate-limiting
-    protocols:
-    - grpc
-    - grpcs
-    - http
-    - https
-  port: 8081
-  protocol: http
-  read_timeout: 60000
-  retries: 5
-  routes:
-  - https_redirect_status_code: 426
-    id: fcea047d-de89-4e4b-b34e-81682348d65d
-    path_handling: v0
-    paths:
-    - /inventory
-    preserve_host: false
-    protocols:
-    - http
-    - https
-    regex_priority: 0
-    request_buffering: true
-    response_buffering: true
-    strip_path: true
-  - https_redirect_status_code: 426
-    name: inventory-admin-route
-    path_handling: v0
-    paths:
-    - /inventory-admin
+  - name: inventory-service
+    host: host.docker.internal
+    port: 8081
+    protocol: http
+
     plugins:
-    - config:
-        allow:
-        - warehouse-group
-        deny: null
-        hide_groups_header: false
-      enabled: true
-      name: acl
-      protocols:
-      - grpc
-      - grpcs
-      - http
-      - https
-    preserve_host: false
-    protocols:
-    - http
-    - https
-    regex_priority: 0
-    request_buffering: true
-    response_buffering: true
-    strip_path: true
-  write_timeout: 60000
-- connect_timeout: 60000
-  enabled: true
-  host: host.docker.internal
-  name: order-service
-  plugins:
-  - config:
-      custom_fields_by_lua: null
-      path: /tmp/kong.log
-      reopen: false
-    enabled: true
-    name: file-log
-    protocols:
-    - grpc
-    - grpcs
-    - http
-    - https
-  - config:
-      anonymous: null
-      claims_to_verify: null
-      cookie_names: []
-      header_names:
-      - authorization
-      key_claim_name: iss
-      maximum_expiration: 0
-      run_on_preflight: true
-      secret_is_base64: false
-      uri_param_names:
-      - jwt
-    enabled: true
-    name: jwt
-    protocols:
-    - grpc
-    - grpcs
-    - http
-    - https
-  - config:
-      day: null
-      error_code: 429
-      error_message: API rate limit exceeded
-      fault_tolerant: true
-      header_name: null
-      hide_client_headers: false
-      hour: null
-      limit_by: consumer
-      minute: 5
-      month: null
-      path: null
-      policy: local
-      redis:
-        database: 0
-        host: null
-        password: null
-        port: 6379
-        server_name: null
-        ssl: false
-        ssl_verify: false
-        timeout: 2000
-        username: null
-      redis_database: 0
-      redis_host: null
-      redis_password: null
-      redis_port: 6379
-      redis_server_name: null
-      redis_ssl: false
-      redis_ssl_verify: false
-      redis_timeout: 2000
-      redis_username: null
-      second: null
-      sync_rate: -1
-      year: null
-    enabled: true
-    name: rate-limiting
-    protocols:
-    - grpc
-    - grpcs
-    - http
-    - https
-  port: 8082
-  protocol: http
-  read_timeout: 60000
-  retries: 5
-  routes:
-  - https_redirect_status_code: 426
-    id: bec279f8-3d31-4eb1-9117-2de0e00d72fc
-    path_handling: v0
-    paths:
-    - /orders
-    preserve_host: false
-    protocols:
-    - http
-    - https
-    regex_priority: 0
-    request_buffering: true
-    response_buffering: true
-    strip_path: true
-  write_timeout: 60000
+      - name: file-log
+        config:
+          path: /tmp/kong.log
+
+      - name: key-auth
+        config:
+          key_names:
+            - apikey
+          key_in_header: true
+          key_in_query: true
+
+      - name: rate-limiting
+        config:
+          minute: 6
+          limit_by: consumer
+
+    routes:
+      - paths:
+          - /inventory
+        strip_path: true
+
+      - paths:
+          - /inventory-admin
+        strip_path: true
+
+  - name: order-service
+    host: host.docker.internal
+    port: 8082
+    protocol: http
+
+    plugins:
+      - name: file-log
+        config:
+          path: /tmp/kong.log
+
+      - name: jwt
+        config:
+          header_names:
+            - authorization
+          key_claim_name: iss
+
+      - name: rate-limiting
+        config:
+          minute: 5
+          limit_by: consumer
+
+    routes:
+      - paths:
+          - /orders
+        strip_path: true

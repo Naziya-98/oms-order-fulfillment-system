@@ -7,6 +7,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+    env_file:
+      - .env
+
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /kong/kong.yml
