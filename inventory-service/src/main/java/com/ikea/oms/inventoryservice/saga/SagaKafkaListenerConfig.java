@@ -48,4 +48,26 @@ public class SagaKafkaListenerConfig {
 
         return factory;
     }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, ReserveInventoryCommand>
+    sagaReserveInventoryKafkaListenerFactory() {
+
+        JsonDeserializer<ReserveInventoryCommand> deserializer =
+                new JsonDeserializer<>(ReserveInventoryCommand.class);
+
+        deserializer.addTrustedPackages("*");
+        deserializer.setUseTypeHeaders(false);
+
+        ConcurrentKafkaListenerContainerFactory<String, ReserveInventoryCommand> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+
+        factory.setConsumerFactory(
+                new DefaultKafkaConsumerFactory<>(commonProps(), new StringDeserializer(), deserializer)
+        );
+
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
+
+        return factory;
+    }
 }

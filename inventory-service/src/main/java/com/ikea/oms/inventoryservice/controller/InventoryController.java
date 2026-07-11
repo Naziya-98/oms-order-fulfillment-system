@@ -27,6 +27,28 @@ public class InventoryController {
         return inventoryService.saveInventory(request);
     }
 
+    // ─── Reservation-based reserve/release (new, additive) ─────────────
+
+    @PostMapping("/reservations")
+    public com.ikea.oms.inventoryservice.dto.ReservationResponseDTO reserve(
+            @jakarta.validation.Valid @RequestBody com.ikea.oms.inventoryservice.dto.ReserveInventoryRequestDTO request) {
+
+        log.info(
+                "Reservation requested. OrderNumber={}, SKU={}, Quantity={}",
+                request.getOrderNumber(), request.getSkuCode(), request.getQuantity());
+
+        return inventoryService.reserve(request);
+    }
+
+    @DeleteMapping("/reservations/{reservationId}")
+    public com.ikea.oms.inventoryservice.dto.ReservationResponseDTO release(
+            @PathVariable String reservationId) {
+
+        log.info("Reservation release (compensation) requested. ReservationId={}", reservationId);
+
+        return inventoryService.release(reservationId);
+    }
+
     @GetMapping
     public List<InventoryResponseDTO> getALLInventory(){
         log.info("Fetching all inventory records");
@@ -48,6 +70,22 @@ public class InventoryController {
         return inventoryService.updateInventory(
                 skuCode,
                 quantity);
+    }
+
+    // Manual compensating action - release previously reserved stock directly
+    // via Postman (e.g. after cancelling a payment) instead of only reacting
+    // to Kafka events.
+    @PatchMapping("/{skuCode}/release/{quantity}")
+    public InventoryResponseDTO releaseInventoryManually(
+            @PathVariable String skuCode,
+            @PathVariable Integer quantity) {
+
+        log.info(
+                "Manual inventory release (compensation) requested. SKU={}, Quantity={}",
+                skuCode,
+                quantity);
+
+        return inventoryService.releaseInventory(skuCode, quantity);
     }
 
     @PatchMapping("/stock/{skuCode}/{quantity}")

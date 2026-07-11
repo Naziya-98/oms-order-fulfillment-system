@@ -37,4 +37,11 @@ public class SagaOrderController {
     public OrderResponseDTO getOrder(@PathVariable String orderNumber) {
         return sagaOrchestratorService.getByOrderNumber(orderNumber);
     }
+
+    // Real cancel-order endpoint (replaces the FAIL_PAYMENT sku-code hack).
+    @PostMapping("/{orderNumber}/cancel")
+    public OrderResponseDTO cancelOrder(@PathVariable String orderNumber) {
+        log.info("Received cancel-order request. OrderNumber={}", orderNumber);
+        return sagaOrchestratorService.cancelOrder(orderNumber);
+    }
 }

@@ -21,11 +21,22 @@ Thumbs.db
 *.env
 *.secret
 
+# Kong declarative config contains live JWT secret + API keys - never commit
+kong/kong-backup.yml
+
 # Maven Wrapper JAR
 !.mvn/wrapper/maven-wrapper.jar
 
 # Docker / Local configs (optional but recommended)
 *.pid
 
+
 # Orchestrator reference / documentation folder
 oms-poc-saga-orchestration/
+
+
+# Kong live config - never commi
+kong/kong.yml
+
+# Local scratch files
+security-utils/cp.txt

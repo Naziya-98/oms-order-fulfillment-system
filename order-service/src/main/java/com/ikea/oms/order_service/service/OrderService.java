@@ -3,6 +3,8 @@ package com.ikea.oms.order_service.service;
 import com.ikea.oms.order_service.dto.InventoryResponseDTO;
 import com.ikea.oms.order_service.dto.OrderRequestDTO;
 import com.ikea.oms.order_service.dto.OrderResponseDTO;
+import com.ikea.oms.order_service.dto.ReserveInventoryRequestDTO;
+import com.ikea.oms.order_service.dto.ReservationResponseDTO;
 import com.ikea.oms.order_service.entity.Order;
 import com.ikea.oms.order_service.entity.OrderItem;
 import com.ikea.oms.order_service.entity.OrderStatus;
@@ -116,18 +118,22 @@ public class OrderService {
 
         order.getOrderItems().add(orderItem);
 
-        log.info("Updating inventory. SKU={}, OrderedQuantity={}",
+        log.info("Reserving inventory via reservation API. OrderNumber={}, SKU={}, OrderedQuantity={}",
+                order.getOrderNumber(),
                 request.getSkuCode(),
                 request.getQuantity());
 
-        InventoryResponseDTO updatedInventory =
-                webClient.patch()
-                        .uri("/api/inventory/"
-                                + request.getSkuCode()
-                                + "/"
-                                + request.getQuantity())
+        ReserveInventoryRequestDTO reserveRequest = new ReserveInventoryRequestDTO();
+        reserveRequest.setOrderNumber(order.getOrderNumber());
+        reserveRequest.setSkuCode(request.getSkuCode());
+        reserveRequest.setQuantity(request.getQuantity());
+
+        ReservationResponseDTO reservation =
+                webClient.post()
+                        .uri("/api/inventory/reservations")
+                        .bodyValue(reserveRequest)
                         .retrieve()
-                        .bodyToMono(InventoryResponseDTO.class)
+                        .bodyToMono(ReservationResponseDTO.class)
                         .block();
 
         order.setStatus(OrderStatus.INVENTORY_RESERVED);
@@ -136,11 +142,11 @@ public class OrderService {
                 "Order {} status updated to INVENTORY_RESERVED",
                 order.getOrderNumber());
 
-        if (updatedInventory != null) {
+        if (reservation != null) {
 
             log.info(
-                    "Inventory updated successfully. RemainingQuantity={}",
-                    updatedInventory.getQuantity());
+                    "Inventory reserved successfully. ReservationId={}",
+                    reservation.getReservationId());
         }
 
         log.info("Saving order into database. OrderNumber={}",
@@ -162,6 +168,7 @@ public class OrderService {
                 new OrderCreatedEvent(
                         savedOrder.getId(),
                         savedOrder.getOrderNumber(),
+                        null, // no saga correlation for direct order API
                         savedItem.getSkuCode(),
                         savedItem.getQuantity()
                 );

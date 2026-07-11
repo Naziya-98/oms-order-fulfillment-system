@@ -1,7 +1,9 @@
 package com.ikea.oms.orchestratorservice.kafka;
+import com.ikea.oms.orchestratorservice.command.CancelPaymentCommand;
 import com.ikea.oms.orchestratorservice.command.CreateOrderCommand;
 import com.ikea.oms.orchestratorservice.command.ProcessPaymentCommand;
 import com.ikea.oms.orchestratorservice.command.ReleaseInventoryCommand;
+import com.ikea.oms.orchestratorservice.command.ReserveInventoryCommand;
 import com.ikea.oms.orchestratorservice.command.SendNotificationCommand;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +19,13 @@ import org.springframework.stereotype.Service;
 public class SagaCommandProducer {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
+
+    public void sendReserveInventoryCommand(ReserveInventoryCommand command) {
+
+        log.info("[ORCHESTRATOR] Sending ReserveInventoryCommand. OrderNumber={}", command.getOrderNumber());
+
+        kafkaTemplate.send("saga.reserve-inventory.command", command);
+    }
 
     public void sendCreateOrderCommand(CreateOrderCommand command) {
 
@@ -44,5 +53,12 @@ public class SagaCommandProducer {
         log.info("[ORCHESTRATOR] Sending ReleaseInventoryCommand (COMPENSATION). OrderNumber={}", command.getOrderNumber());
 
         kafkaTemplate.send("saga.release-inventory.command", command);
+    }
+
+    public void sendCancelPaymentCommand(CancelPaymentCommand command) {
+
+        log.info("[ORCHESTRATOR] Sending CancelPaymentCommand (REFUND). OrderNumber={}", command.getOrderNumber());
+
+        kafkaTemplate.send("saga.cancel-payment.command", command);
     }
 }

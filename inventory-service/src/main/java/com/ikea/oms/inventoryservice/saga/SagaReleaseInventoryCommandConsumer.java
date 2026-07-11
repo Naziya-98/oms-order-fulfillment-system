@@ -26,11 +26,12 @@ public class SagaReleaseInventoryCommandConsumer {
 
         log.info("ReleaseInventoryCommand received for OrderNumber={}", command.getOrderNumber());
 
-        inventoryService.releaseInventory(command.getSkuCode(), command.getQuantity());
+        inventoryService.releaseForOrder(command.getOrderNumber());
 
         SagaInventoryReleasedEvent releasedEvent = new SagaInventoryReleasedEvent(
                 command.getOrderId(),
                 command.getOrderNumber(),
+                command.getBusinessOrderNumber(),
                 "INVENTORY_RELEASED"
         );
 

@@ -218,7 +218,30 @@ For demonstrations, requests are typically sent through Kong Gateway so that aut
 
 ---
 
-# Related Documentation
+# Compensation / Cancel APIs
+
+Replaces the old approach of triggering compensation via a hardcoded
+`skuCode == "FAIL_PAYMENT"` value. Payment success/failure is now decided by
+`PaymentGatewaySimulator` (a configurable timer + failure-rate), and
+cancellation is triggered explicitly via these endpoints instead.
+
+## Choreography
+
+| Action | Endpoint | Notes |
+|---|---|---|
+| Cancel/refund a payment | `POST /api/payments/{orderNumber}/refund` | Works whether payment already completed or is still pending. Publishes to `payment-failed-topic`, which inventory-service and order-service already consume to release stock and mark the order `CANCELLED`. |
+
+## Orchestration
+
+| Action | Endpoint | Notes |
+|---|---|---|
+| Cancel an order | `POST /api/orchestrated-orders/{orderNumber}/cancel` | Branches internally on the saga's current status: if payment hasn't completed yet, inventory is released directly; if payment already completed, a `CancelPaymentCommand` is sent to payment-service first (`saga.cancel-payment.command`), which refunds and republishes on the existing `saga.payment-failed.event` topic so the normal compensation path (release inventory → `CANCELLED`) runs unchanged. |
+
+Returns `409 Conflict` if the order is not in a cancellable state (e.g. already `CANCELLED`, or hasn't reserved inventory yet).
+
+---
+
+
 
 - Architecture.md
 - Setup.md

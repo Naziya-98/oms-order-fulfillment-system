@@ -12,6 +12,13 @@ public class SagaInventoryEventProducer {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
+    public void publishInventoryReserved(SagaInventoryReservedEvent event) {
+
+        log.info("[SAGA] Publishing SagaInventoryReservedEvent {}", event);
+
+        kafkaTemplate.send("saga.inventory-reserved.event", event);
+    }
+
     public void publishInventoryReleased(SagaInventoryReleasedEvent event) {
 
         log.info("[SAGA] Publishing SagaInventoryReleasedEvent {}", event);

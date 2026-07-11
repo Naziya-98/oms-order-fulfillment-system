@@ -6,9 +6,12 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
+// Published to topic: saga.send CreateOrder.command
+// Consumed by: order-service (SagaCreateOrderCommandConsumer)
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+
 public class CreateOrderCommand {
 
     private Long sagaOrderId;

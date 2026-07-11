@@ -1,10 +1,12 @@
 package com.ikea.oms.orchestratorservice.config;
 
 import com.ikea.oms.orchestratorservice.event.InventoryReleasedEvent;
+import com.ikea.oms.orchestratorservice.event.SagaInventoryReservedEvent;
 import com.ikea.oms.orchestratorservice.event.NotificationSentEvent;
 import com.ikea.oms.orchestratorservice.event.OrderDeliveredEvent;
 import com.ikea.oms.orchestratorservice.event.PaymentCompletedEvent;
 import com.ikea.oms.orchestratorservice.event.PaymentFailedEvent;
+import com.ikea.oms.orchestratorservice.event.OrderCreatedEvent;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.context.annotation.Bean;
@@ -82,5 +84,17 @@ public class KafkaListenerConfig {
     public ConcurrentKafkaListenerContainerFactory<String, InventoryReleasedEvent>
     inventoryReleasedKafkaListenerFactory() {
         return factoryFor(InventoryReleasedEvent.class);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, SagaInventoryReservedEvent>
+    sagaInventoryReservedKafkaListenerFactory() {
+        return factoryFor(SagaInventoryReservedEvent.class);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, OrderCreatedEvent>
+    orderCreatedKafkaListenerFactory() {
+        return factoryFor(OrderCreatedEvent.class);
     }
 }

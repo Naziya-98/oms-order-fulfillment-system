@@ -24,4 +24,22 @@ return ResponseEntity.badRequest().body(errors);
                 .status(404)
                 .body(ex.getMessage());
     }
+
+    @ExceptionHandler(com.ikea.oms.inventoryservice.exception.ReservationNotFoundException.class)
+    public ResponseEntity<String> handleReservationNotFound(
+            com.ikea.oms.inventoryservice.exception.ReservationNotFoundException ex) {
+
+        return ResponseEntity
+                .status(404)
+                .body(ex.getMessage());
+    }
+
+    @ExceptionHandler(com.ikea.oms.inventoryservice.exception.InsufficientInventoryException.class)
+    public ResponseEntity<String> handleInsufficientInventory(
+            com.ikea.oms.inventoryservice.exception.InsufficientInventoryException ex) {
+
+        return ResponseEntity
+                .status(409)
+                .body(ex.getMessage());
+    }
 }

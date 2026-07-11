@@ -10,6 +10,13 @@ public class JwtGenerator {
 
     public static void main(String[] args) {
 
+        System.out.println("==============================================");
+        System.out.println("System.getenv(JWT_ISSUER): " + System.getenv("JWT_ISSUER"));
+        System.out.println("System.getenv(JWT_SECRET): " + System.getenv("JWT_SECRET"));
+        System.out.println("JwtConstants.ISSUER      : " + JwtConstants.ISSUER);
+        System.out.println("JwtConstants.SECRET      : " + JwtConstants.SECRET);
+        System.out.println("==============================================");
+
         SecretKey key =
                 Keys.hmacShaKeyFor(JwtConstants.SECRET.getBytes());
 

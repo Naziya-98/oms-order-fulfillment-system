@@ -1,29 +1,29 @@
 package com.ikea.oms.orchestratorservice.service;
+import com.ikea.oms.orchestratorservice.command.CancelPaymentCommand;
 import com.ikea.oms.orchestratorservice.command.CreateOrderCommand;
 import com.ikea.oms.orchestratorservice.command.ProcessPaymentCommand;
 import com.ikea.oms.orchestratorservice.command.ReleaseInventoryCommand;
+import com.ikea.oms.orchestratorservice.command.ReserveInventoryCommand;
 import com.ikea.oms.orchestratorservice.command.SendNotificationCommand;
-import com.ikea.oms.orchestratorservice.dto.InventoryResponseDTO;
 import com.ikea.oms.orchestratorservice.dto.OrderRequestDTO;
 import com.ikea.oms.orchestratorservice.dto.OrderResponseDTO;
 import com.ikea.oms.orchestratorservice.entity.SagaOrder;
 import com.ikea.oms.orchestratorservice.entity.SagaStatus;
 import com.ikea.oms.orchestratorservice.event.InventoryReleasedEvent;
+import com.ikea.oms.orchestratorservice.event.SagaInventoryReservedEvent;
 import com.ikea.oms.orchestratorservice.event.NotificationSentEvent;
 import com.ikea.oms.orchestratorservice.event.OrderDeliveredEvent;
 import com.ikea.oms.orchestratorservice.event.PaymentCompletedEvent;
 import com.ikea.oms.orchestratorservice.event.PaymentFailedEvent;
-import com.ikea.oms.orchestratorservice.exception.InsufficientInventoryException;
-import com.ikea.oms.orchestratorservice.exception.InventoryNotFoundException;
 import com.ikea.oms.orchestratorservice.exception.SagaOrderNotFoundException;
 import com.ikea.oms.orchestratorservice.kafka.SagaCommandProducer;
 import com.ikea.oms.orchestratorservice.repository.SagaOrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * SAGA ORCHESTRATION (central coordinator)
@@ -33,10 +33,12 @@ import java.util.List;
  * class is the single source of truth for "what happens next".
  *
  * It:
- *   1) Reserves inventory synchronously (REST call, same as order-service today)
- *   2) Explicitly commands payment-service to process payment
- *   3) On success, explicitly commands notification-service to notify + deliver
- *   4) On failure, explicitly commands inventory-service to compensate (release stock)
+ *   1) Commands inventory-service via Kafka to reserve inventory
+ *   2) Receives InventoryReservedEvent with unitPrice and success/failure
+ *   3) Explicitly commands order-service to persist the order record
+ *   4) Explicitly commands payment-service to process payment
+ *   5) On success, explicitly commands notification-service to notify + deliver
+ *   6) On failure, explicitly commands inventory-service to compensate (release stock)
  *
  * All state transitions are persisted in saga_orders so progress can be
  * inspected via GET /api/orchestrated-orders/{orderNumber}.
@@ -47,7 +49,6 @@ import java.util.List;
 public class SagaOrchestratorService {
 
     private final SagaOrderRepository sagaOrderRepository;
-    private final WebClient inventoryWebClient;
     private final SagaCommandProducer sagaCommandProducer;
 
     public OrderResponseDTO startSaga(OrderRequestDTO request) {
@@ -65,88 +66,96 @@ public class SagaOrchestratorService {
         sagaOrder.setStatus(SagaStatus.STARTED);
         sagaOrder.setCurrentStep("SAGA_STARTED");
 
-        // ---- Step 1: reserve inventory (synchronous, same as choreography's order-service) ----
-
-        InventoryResponseDTO inventoryResponse;
-
-        try {
-            log.info("[ORCHESTRATOR] Checking inventory for SKU={}", request.getSkuCode());
-
-            inventoryResponse = inventoryWebClient.get()
-                    .uri("/api/inventory/" + request.getSkuCode())
-                    .retrieve()
-                    .bodyToMono(InventoryResponseDTO.class)
-                    .block();
-
-        } catch (Exception e) {
-            log.error("[ORCHESTRATOR] Inventory lookup failed for SKU={}", request.getSkuCode(), e);
-            throw new InventoryNotFoundException("Inventory not found for SKU: " + request.getSkuCode());
-        }
-
-        if (inventoryResponse == null) {
-            throw new InventoryNotFoundException("Inventory not found for SKU: " + request.getSkuCode());
-        }
-
-        if (request.getQuantity() > inventoryResponse.getQuantity()) {
-            throw new InsufficientInventoryException("Insufficient Inventory Available");
-        }
-
-        sagaOrder.setUnitPrice(inventoryResponse.getUnitPrice());
-
-        InventoryResponseDTO updatedInventory = inventoryWebClient.patch()
-                .uri("/api/inventory/" + request.getSkuCode() + "/" + request.getQuantity())
-                .retrieve()
-                .bodyToMono(InventoryResponseDTO.class)
-                .block();
-
-        if (updatedInventory != null) {
-            log.info("[ORCHESTRATOR] Inventory reserved. RemainingQuantity={}", updatedInventory.getQuantity());
-        }
-
-        sagaOrder.setStatus(SagaStatus.INVENTORY_RESERVED);
-        sagaOrder.setCurrentStep("INVENTORY_RESERVED");
+        // ---- Step 1: command inventory-service to reserve inventory (async via Kafka) ----
 
         SagaOrder savedOrder = sagaOrderRepository.save(sagaOrder);
 
-        try {
-            log.info("[TEST] Sleeping 10s after INVENTORY_RESERVED save — kill the app now to test the resumability gap.");
-            Thread.sleep(10000); // TEMPORARY — remove after this test
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
         log.info("[ORCHESTRATOR] SagaOrder persisted. Id={}, OrderNumber={}", savedOrder.getId(), savedOrder.getOrderNumber());
 
-
-        // ---- Step 2: explicitly command order-service to persist the order record ----
-        CreateOrderCommand createOrderCommand = new CreateOrderCommand(
-                savedOrder.getId(),
-                savedOrder.getOrderNumber(),
-                savedOrder.getSkuCode(),
-                savedOrder.getQuantity(),
-                savedOrder.getUnitPrice(),
-                savedOrder.getCustomerName(),
-                savedOrder.getCustomerEmail(),
-                savedOrder.getShippingAddress()
-        );
-
-        sagaCommandProducer.sendCreateOrderCommand(createOrderCommand);
-
-        // ---- Step 3: explicitly command payment-service ----
-
-        ProcessPaymentCommand paymentCommand = new ProcessPaymentCommand(
+        ReserveInventoryCommand reserveCommand = new ReserveInventoryCommand(
                 savedOrder.getId(),
                 savedOrder.getOrderNumber(),
                 savedOrder.getSkuCode(),
                 savedOrder.getQuantity()
         );
 
-        sagaCommandProducer.sendProcessPaymentCommand(paymentCommand);
+        sagaCommandProducer.sendReserveInventoryCommand(reserveCommand);
 
-        savedOrder.setStatus(SagaStatus.PAYMENT_PROCESSING);
-        savedOrder.setCurrentStep("PROCESS_PAYMENT_COMMAND_SENT");
+        // Some DB schemas may have a check constraint that doesn't include INVENTORY_RESERVATION_PENDING.
+        // To remain compatible with existing DB constraints use STARTED until inventory reservation event arrives.
+        savedOrder.setStatus(SagaStatus.STARTED);
+        savedOrder.setCurrentStep("RESERVE_INVENTORY_COMMAND_SENT");
         sagaOrderRepository.save(savedOrder);
 
         return toResponse(savedOrder);
+    }
+
+    // ---- Step 2: inventory reserved -> command order-service and payment-service ----
+    public void onInventoryReserved(SagaInventoryReservedEvent event) {
+
+        SagaOrder sagaOrder = getByOrderId(event.getOrderId());
+
+        if ("INVENTORY_RESERVED".equals(event.getStatus())) {
+
+            sagaOrder.setUnitPrice(event.getUnitPrice());
+            sagaOrder.setStatus(SagaStatus.INVENTORY_RESERVED);
+            sagaOrder.setCurrentStep("INVENTORY_RESERVED");
+            sagaOrderRepository.save(sagaOrder);
+
+            log.info("[ORCHESTRATOR] Inventory reserved successfully. OrderNumber={}, UnitPrice={}", 
+                     event.getOrderNumber(), event.getUnitPrice());
+
+            // ---- Step 2a: command order-service to persist the order record ----
+            CreateOrderCommand createOrderCommand = new CreateOrderCommand(
+                    sagaOrder.getId(),
+                    null, // Let Order Service generate its own business orderNumber
+                    sagaOrder.getSkuCode(),
+                    sagaOrder.getQuantity(),
+                    sagaOrder.getUnitPrice(),
+                    sagaOrder.getCustomerName(),
+                    sagaOrder.getCustomerEmail(),
+                    sagaOrder.getShippingAddress()
+            );
+
+            sagaCommandProducer.sendCreateOrderCommand(createOrderCommand);
+
+            // ---- Step 2b: command payment-service ----
+            ProcessPaymentCommand paymentCommand = new ProcessPaymentCommand(
+                    sagaOrder.getId(),
+                    sagaOrder.getOrderNumber(),
+                    sagaOrder.getSkuCode(),
+                    sagaOrder.getQuantity()
+            );
+
+            sagaCommandProducer.sendProcessPaymentCommand(paymentCommand);
+
+            sagaOrder.setStatus(SagaStatus.PAYMENT_PROCESSING);
+            sagaOrder.setCurrentStep("PROCESS_PAYMENT_COMMAND_SENT");
+            sagaOrderRepository.save(sagaOrder);
+
+        } else {
+
+            sagaOrder.setStatus(SagaStatus.INVENTORY_RESERVATION_FAILED);
+            sagaOrder.setFailureReason("Inventory reservation failed for SKU=" + event.getSkuCode());
+            sagaOrder.setCurrentStep("INVENTORY_RESERVATION_FAILED");
+            sagaOrderRepository.save(sagaOrder);
+
+            log.error("[ORCHESTRATOR] Inventory reservation failed. OrderNumber={}, Reason: {}", 
+                      event.getOrderNumber(), event.getStatus());
+        }
+    }
+
+    public void onOrderCreated(com.ikea.oms.orchestratorservice.event.OrderCreatedEvent event) {
+
+        // Correlate saga with business orderNumber produced by Order Service
+        SagaOrder sagaOrder = getByOrderId(event.getSagaOrderId());
+
+        // Do not overwrite saga orderNumber (SAGA...). Store business order number separately.
+        sagaOrder.setBusinessOrderNumber(event.getOrderNumber());
+        sagaOrder.setCurrentStep("ORDER_CREATED_BY_ORDER_SERVICE");
+        sagaOrderRepository.save(sagaOrder);
+
+        log.info("[ORCHESTRATOR] Linked sagaOrderId={} to businessOrderNumber={}", event.getSagaOrderId(), event.getOrderNumber());
     }
 
     // ---- Step 3a: payment succeeded -> command notification-service ----
@@ -181,6 +190,7 @@ public class SagaOrchestratorService {
         ReleaseInventoryCommand releaseCommand = new ReleaseInventoryCommand(
                 sagaOrder.getId(),
                 sagaOrder.getOrderNumber(),
+                sagaOrder.getBusinessOrderNumber(),
                 sagaOrder.getSkuCode(),
                 sagaOrder.getQuantity()
         );
@@ -190,6 +200,66 @@ public class SagaOrchestratorService {
         sagaOrder.setStatus(SagaStatus.COMPENSATING);
         sagaOrder.setCurrentStep("RELEASE_INVENTORY_COMMAND_SENT");
         sagaOrderRepository.save(sagaOrder);
+    }
+
+    // ---- Explicit "Cancel Order" API (replaces the FAIL_PAYMENT sku hack) ----
+    // POST /api/orchestrated-orders/{orderNumber}/cancel
+    // Branches on how far the saga has already progressed:
+    //  - payment not completed yet -> release inventory directly
+    //  - payment already completed -> ask payment-service to refund first;
+    //    the refund confirmation comes back on the EXISTING saga.payment-failed.event
+    //    topic, so onPaymentFailed() above completes the compensation as-is.
+    private static final Set<SagaStatus> CANCELLABLE_BEFORE_PAYMENT = Set.of(
+            SagaStatus.INVENTORY_RESERVED,
+            SagaStatus.PAYMENT_PROCESSING
+    );
+
+    private static final Set<SagaStatus> CANCELLABLE_AFTER_PAYMENT = Set.of(
+            SagaStatus.PAYMENT_COMPLETED,
+            SagaStatus.NOTIFICATION_PROCESSING,
+            SagaStatus.NOTIFICATION_SENT,
+            SagaStatus.COMPLETED
+    );
+
+    public OrderResponseDTO cancelOrder(String orderNumber) {
+
+        SagaOrder sagaOrder = sagaOrderRepository.findByOrderNumber(orderNumber)
+                .orElseThrow(() -> new SagaOrderNotFoundException("Saga order not found: " + orderNumber));
+
+        SagaStatus currentStatus = sagaOrder.getStatus();
+
+        if (CANCELLABLE_AFTER_PAYMENT.contains(currentStatus)) {
+
+            log.info("[ORCHESTRATOR] Cancel requested after payment completed. Refunding first. OrderNumber={}", orderNumber);
+
+            sagaOrder.setStatus(SagaStatus.REFUND_PROCESSING);
+            sagaOrder.setCurrentStep("CANCEL_PAYMENT_COMMAND_SENT");
+            sagaOrder.setFailureReason("Order cancelled by customer/admin after payment");
+            sagaOrderRepository.save(sagaOrder);
+
+            sagaCommandProducer.sendCancelPaymentCommand(new CancelPaymentCommand(
+                    sagaOrder.getId(), sagaOrder.getOrderNumber(), sagaOrder.getSkuCode(), sagaOrder.getQuantity()
+            ));
+
+        } else if (CANCELLABLE_BEFORE_PAYMENT.contains(currentStatus)) {
+
+            log.info("[ORCHESTRATOR] Cancel requested before payment completed. Releasing inventory directly. OrderNumber={}", orderNumber);
+
+            sagaOrder.setStatus(SagaStatus.COMPENSATING);
+            sagaOrder.setCurrentStep("RELEASE_INVENTORY_COMMAND_SENT");
+            sagaOrder.setFailureReason("Order cancelled by customer/admin before payment completed");
+            sagaOrderRepository.save(sagaOrder);
+
+            sagaCommandProducer.sendReleaseInventoryCommand(new ReleaseInventoryCommand(
+                    sagaOrder.getId(), sagaOrder.getOrderNumber(), sagaOrder.getBusinessOrderNumber(),
+                    sagaOrder.getSkuCode(), sagaOrder.getQuantity()
+            ));
+
+        } else {
+            throw new IllegalStateException("Order cannot be cancelled from its current status: " + currentStatus);
+        }
+
+        return toResponse(sagaOrder);
     }
 
     public void onNotificationSent(NotificationSentEvent event) {
@@ -251,6 +321,7 @@ public class SagaOrchestratorService {
 
         response.setId(sagaOrder.getId());
         response.setOrderNumber(sagaOrder.getOrderNumber());
+        response.setBusinessOrderNumber(sagaOrder.getBusinessOrderNumber());
         response.setSkuCode(sagaOrder.getSkuCode());
         response.setQuantity(sagaOrder.getQuantity());
         response.setUnitPrice(sagaOrder.getUnitPrice());

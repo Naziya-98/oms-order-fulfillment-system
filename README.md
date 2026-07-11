@@ -99,7 +99,7 @@ Participating services:
 
 ## Saga Orchestration
 
-The orchestration implementation introduces a dedicated Orchestrator Service that coordinates the complete workflow while communicating with the remaining services through REST and Kafka.
+The orchestration implementation introduces a dedicated Orchestrator Service that coordinates the complete workflow entirely through Kafka commands and events. The Orchestrator itself never makes a REST call to any participating service — the only REST call in the orchestration flow is a single `GET` from Order Service to Inventory Service, made purely to enrich the order with a product name.
 
 Participating services:
 
@@ -161,8 +161,6 @@ Additional documentation is available under the `docs` directory.
 | Saga-Choreography.md | Choreography workflow |
 | Saga-Orchestration.md | Orchestration workflow |
 | API.md | REST API reference |
-| DeveloperNotes.md | Development notes and implementation details |
-| Roadmap.md | Planned enhancements |
 
 The README provides a high-level overview of the project. Detailed implementation notes, architecture diagrams, sequence diagrams, setup instructions, and API documentation are maintained in the `docs` folder.
 
@@ -205,4 +203,3 @@ The current implementation includes:
 - Swagger API documentation
 
 The project is intended as a learning and demonstration proof of concept for backend microservices and the order fulfillment workflow.
-

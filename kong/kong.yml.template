@@ -1,79 +1,70 @@
 _format_version: "3.0"
-
 consumers:
   - username: customer-api-client
     acls:
       - group: customer-group
     keyauth_credentials:
       - key: ${CUSTOMER_API_KEY}
-
   - username: ikea-client
     acls:
       - group: customer-group
     jwt_secrets:
       - algorithm: HS256
-        key: ikea-client-key
+        key: ikea-client
         secret: ${JWT_SECRET}
-
   - username: warehouse-client
     acls:
       - group: warehouse-group
     keyauth_credentials:
       - key: ${WAREHOUSE_API_KEY}
-
 services:
   - name: inventory-service
     host: host.docker.internal
     port: 8081
     protocol: http
-
     plugins:
       - name: file-log
         config:
           path: /tmp/kong.log
-
       - name: key-auth
         config:
           key_names:
             - apikey
           key_in_header: true
           key_in_query: true
-
       - name: rate-limiting
         config:
           minute: 6
           limit_by: consumer
-
     routes:
       - paths:
           - /inventory
         strip_path: true
-
       - paths:
           - /inventory-admin
         strip_path: true
-
+        plugins:
+          - name: acl
+            config:
+              allow:
+                - warehouse-group
   - name: order-service
     host: host.docker.internal
     port: 8082
     protocol: http
-
     plugins:
       - name: file-log
         config:
           path: /tmp/kong.log
-
       - name: jwt
         config:
           header_names:
             - authorization
           key_claim_name: iss
-
       - name: rate-limiting
         config:
           minute: 5
           limit_by: consumer
-
     routes:
       - paths:
           - /orders

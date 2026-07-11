@@ -23,13 +23,21 @@ public class SagaPaymentCompletedConsumer {
     )
     public void consume(SagaPaymentCompletedEvent event, Acknowledgment ack) {
 
-        log.info("[SAGA] PaymentCompletedEvent received. OrderNumber={}", event.getOrderNumber());
+        log.info("[SAGA] PaymentCompletedEvent received. sagaOrderId={}, sagaOrderNumber={}",
+                event.getOrderId(), event.getOrderNumber());
 
-        orderRepository.findByOrderNumber(event.getOrderNumber()).ifPresentOrElse(order -> {
+        // event.getOrderNumber() is the saga's SAGA... orderNumber, not this
+        // service's own ORD... business orderNumber — looking up by it here always
+        // silently failed, which is why the local order row previously never left
+        // INVENTORY_RESERVED. event.getOrderId() is the saga's numeric id, stamped
+        // on the order row (sagaOrderId) the moment it was created, so it is always
+        // safe to correlate on.
+        orderRepository.findBySagaOrderId(event.getOrderId()).ifPresentOrElse(order -> {
             order.setStatus(OrderStatus.PAYMENT_COMPLETED);
             orderRepository.save(order);
-            log.info("[SAGA] Order status updated to PAYMENT_COMPLETED. OrderNumber={}", event.getOrderNumber());
-        }, () -> log.warn("[SAGA] No order found for OrderNumber={}", event.getOrderNumber()));
+            log.info("[SAGA] Order status updated to PAYMENT_COMPLETED. OrderNumber={}", order.getOrderNumber());
+        }, () -> log.warn("[SAGA] No order found for sagaOrderId={} (sagaOrderNumber={})",
+                event.getOrderId(), event.getOrderNumber()));
 
         ack.acknowledge();
     }

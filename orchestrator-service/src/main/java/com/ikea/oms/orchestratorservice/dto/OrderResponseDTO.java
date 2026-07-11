@@ -11,6 +11,7 @@ public class OrderResponseDTO {
 
     private Long id;
     private String orderNumber;
+    private String businessOrderNumber;
     private String skuCode;
     private Integer quantity;
     private BigDecimal unitPrice;

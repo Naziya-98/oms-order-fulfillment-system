@@ -50,8 +50,12 @@ REST APIs are used for synchronous operations that require an immediate response
 
 Current REST communication includes:
 
-- Order Service → Inventory Service
-- Orchestrator Service → Inventory Service
+- Order Service → Inventory Service (choreography: validate + reserve inventory)
+- Order Service → Inventory Service (orchestration: enrich product name only — a single `GET` call made when Order Service creates the order in response to `saga.create-order.command`)
+
+The Orchestrator Service itself never makes a REST call to any participating service. Every
+orchestration step (including inventory reservation) is a Kafka command or event — see
+`Saga-Orchestration.md` for the full command/event table.
 
 ### Apache Kafka
 

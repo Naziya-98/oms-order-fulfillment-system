@@ -23,13 +23,18 @@ public class SagaOrderDeliveredConsumer {
     )
     public void consume(SagaOrderDeliveredEvent event, Acknowledgment ack) {
 
-        log.info("[SAGA] OrderDeliveredEvent received. OrderNumber={}", event.getOrderNumber());
+        log.info("[SAGA] OrderDeliveredEvent received. sagaOrderId={}, sagaOrderNumber={}",
+                event.getOrderId(), event.getOrderNumber());
 
-        orderRepository.findByOrderNumber(event.getOrderNumber()).ifPresentOrElse(order -> {
+        // Same root cause as SagaPaymentCompletedConsumer: correlate on the saga's
+        // numeric orderId (stamped as sagaOrderId on the row at creation time), not
+        // the saga's SAGA... orderNumber string, which this table doesn't use as a key.
+        orderRepository.findBySagaOrderId(event.getOrderId()).ifPresentOrElse(order -> {
             order.setStatus(OrderStatus.DELIVERED);
             orderRepository.save(order);
-            log.info("[SAGA] Order status updated to DELIVERED. OrderNumber={}", event.getOrderNumber());
-        }, () -> log.warn("[SAGA] No order found for OrderNumber={}", event.getOrderNumber()));
+            log.info("[SAGA] Order status updated to DELIVERED. OrderNumber={}", order.getOrderNumber());
+        }, () -> log.warn("[SAGA] No order found for sagaOrderId={} (sagaOrderNumber={})",
+                event.getOrderId(), event.getOrderNumber()));
 
         ack.acknowledge();
     }

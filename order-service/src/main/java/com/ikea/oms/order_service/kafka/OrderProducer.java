@@ -27,4 +27,18 @@ public class OrderProducer {
 
    }
 
+   public void publishSagaOrderCreated(OrderCreatedEvent event) {
+
+       log.info("Publishing Saga OrderCreatedEvent. sagaOrderId={}, orderNumber={}", event.getSagaOrderId(), event.getOrderNumber());
+
+       kafkaTemplate.send("saga.order-created.event", event);
+
+       log.info(
+               "Saga OrderCreatedEvent published successfully. sagaOrderId={}, orderNumber={}",
+               event.getSagaOrderId(),
+               event.getOrderNumber()
+       );
+
+   }
+
 }

@@ -1,5 +1,7 @@
 package com.ikea.oms.paymentservice.saga;
 
+import com.ikea.oms.paymentservice.service.PaymentGatewaySimulator;
+import com.ikea.oms.paymentservice.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -12,6 +14,8 @@ import org.springframework.stereotype.Service;
 public class SagaPaymentCommandConsumer {
 
     private final SagaPaymentEventProducer sagaPaymentEventProducer;
+    private final PaymentGatewaySimulator gatewaySimulator;
+    private final PaymentService paymentService;
 
     @KafkaListener(
             topics = "saga.process-payment.command",
@@ -21,38 +25,56 @@ public class SagaPaymentCommandConsumer {
     public void consume(ProcessPaymentCommand command, Acknowledgment ack) {
 
         log.info("========== [SAGA] Payment Service (Orchestrated) ==========");
-
         log.info("ProcessPaymentCommand received for OrderNumber={}", command.getOrderNumber());
 
-        if ("FAIL_PAYMENT".equalsIgnoreCase(command.getSkuCode())) {
+        // Persist a PENDING row up front, same as the choreography flow — this is
+        // what makes paymentdb.payment actually have a row for orchestrated orders.
+        // Keyed by the saga's own orderNumber (see PaymentService for why).
+        paymentService.createPendingOrchestratedPayment(
+                command.getOrderId(), command.getOrderNumber(), command.getSkuCode(), command.getQuantity()
+        );
 
-            log.error("[SAGA] Payment failed for OrderNumber={}", command.getOrderNumber());
+        // Outcome now comes from the simulated payment gateway (timer +
+        // configurable failure rate) instead of inspecting skuCode.
+        gatewaySimulator.authorizeAsync(command.getOrderNumber(), approved -> {
 
-            SagaPaymentFailedEvent failedEvent = new SagaPaymentFailedEvent(
-                    command.getOrderId(),
-                    command.getOrderNumber(),
-                    command.getSkuCode(),
-                    command.getQuantity(),
-                    "PAYMENT_FAILED"
-            );
+            if (approved) {
 
-            sagaPaymentEventProducer.publishPaymentFailed(failedEvent);
+                log.info("[SAGA] Payment completed successfully for OrderNumber={}", command.getOrderNumber());
 
-        } else {
+                paymentService.markOrchestratedSuccess(command.getOrderNumber());
 
-            log.info("[SAGA] Payment completed successfully for OrderNumber={}", command.getOrderNumber());
+                SagaPaymentCompletedEvent completedEvent = new SagaPaymentCompletedEvent(
+                        command.getOrderId(),
+                        command.getOrderNumber(),
+                        "PAYMENT_COMPLETED"
+                );
 
-            SagaPaymentCompletedEvent completedEvent = new SagaPaymentCompletedEvent(
-                    command.getOrderId(),
-                    command.getOrderNumber(),
-                    "PAYMENT_COMPLETED"
-            );
+                sagaPaymentEventProducer.publishPaymentCompleted(completedEvent);
 
-            sagaPaymentEventProducer.publishPaymentCompleted(completedEvent);
-        }
+            } else {
 
-        log.info("=============================================================");
+                log.error("[SAGA] Payment declined by gateway for OrderNumber={}", command.getOrderNumber());
 
-        ack.acknowledge();
+                paymentService.markOrchestratedFailed(command.getOrderNumber());
+
+                SagaPaymentFailedEvent failedEvent = new SagaPaymentFailedEvent(
+                        command.getOrderId(),
+                        command.getOrderNumber(),
+                        command.getSkuCode(),
+                        command.getQuantity(),
+                        "PAYMENT_FAILED"
+                );
+
+                sagaPaymentEventProducer.publishPaymentFailed(failedEvent);
+            }
+
+            log.info("=============================================================");
+
+            // Acknowledge only after the simulated gateway has responded, so a
+            // consumer restart mid-flight causes a clean redelivery instead of
+            // an orphaned command.
+            ack.acknowledge();
+        });
     }
 }

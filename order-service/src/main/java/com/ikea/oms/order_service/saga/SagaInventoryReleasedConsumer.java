@@ -23,13 +23,31 @@ public class SagaInventoryReleasedConsumer {
     )
     public void consume(SagaInventoryReleasedEvent event, Acknowledgment ack) {
 
-        log.info("[SAGA] InventoryReleasedEvent received. OrderNumber={}", event.getOrderNumber());
+        log.info("[SAGA] InventoryReleasedEvent received. sagaOrderId={}, sagaOrderNumber={}, businessOrderNumber={}",
+                event.getOrderId(), event.getOrderNumber(), event.getBusinessOrderNumber());
 
-        orderRepository.findByOrderNumber(event.getOrderNumber()).ifPresentOrElse(order -> {
+        // Prefer sagaOrderId (stamped on the row at creation time — always present,
+        // no race). Cancel can legitimately race ahead of order creation if the
+        // customer cancels right after INVENTORY_RESERVED, before order-service's
+        // CreateOrderCommand round-trip finishes — in that narrow window
+        // businessOrderNumber may still be blank, so fall back to it, and finally to
+        // the raw saga orderNumber as a last resort so nothing is silently dropped.
+        var orderOpt = orderRepository.findBySagaOrderId(event.getOrderId());
+
+        if (orderOpt.isEmpty() && event.getBusinessOrderNumber() != null && !event.getBusinessOrderNumber().isBlank()) {
+            orderOpt = orderRepository.findByOrderNumber(event.getBusinessOrderNumber());
+        }
+
+        if (orderOpt.isEmpty()) {
+            orderOpt = orderRepository.findByOrderNumber(event.getOrderNumber());
+        }
+
+        orderOpt.ifPresentOrElse(order -> {
             order.setStatus(OrderStatus.CANCELLED);
             orderRepository.save(order);
-            log.info("[SAGA] Order status updated to CANCELLED. OrderNumber={}", event.getOrderNumber());
-        }, () -> log.warn("[SAGA] No order found for OrderNumber={}", event.getOrderNumber()));
+            log.info("[SAGA] Order status updated to CANCELLED. OrderNumber={}", order.getOrderNumber());
+        }, () -> log.warn("[SAGA] No order found for sagaOrderId={}, businessOrderNumber={}, sagaOrderNumber={}",
+                event.getOrderId(), event.getBusinessOrderNumber(), event.getOrderNumber()));
 
         ack.acknowledge();
     }

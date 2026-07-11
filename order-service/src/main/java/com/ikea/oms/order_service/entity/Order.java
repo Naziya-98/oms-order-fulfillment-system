@@ -20,6 +20,15 @@ public class Order {
 
     private String orderNumber;
 
+    // Correlates this row back to orchestrator-service's SagaOrder.id (the numeric
+    // primary key of saga_orders, NOT the SAGA... orderNumber string). This is set
+    // the instant the order is created here (same transaction as orderNumber), so
+    // there is no async gap/race like there is with businessOrderNumber: every
+    // saga.*.event the orchestrator forwards downstream already carries this same
+    // numeric orderId from the very first command, so consumers here can always
+    // find the right row immediately, even if payment or notification resolves
+    // before this order row would otherwise be findable by business order number.
+    private Long sagaOrderId;
 
     @Enumerated(EnumType.STRING)
     private OrderStatus status;

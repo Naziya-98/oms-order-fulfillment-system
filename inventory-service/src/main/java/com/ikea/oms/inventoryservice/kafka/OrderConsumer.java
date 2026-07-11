@@ -70,10 +70,7 @@ public class OrderConsumer {
             log.error("Thread interrupted while waiting.", e);
         }
 
-        inventoryService.releaseInventory(
-                event.getSkuCode(),
-                event.getQuantity()
-        );
+        inventoryService.releaseForOrder(event.getOrderNumber());
 
         InventoryReleasedEvent inventoryReleasedEvent =
                 new InventoryReleasedEvent(

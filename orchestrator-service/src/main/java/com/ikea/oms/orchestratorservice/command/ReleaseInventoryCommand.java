@@ -14,6 +14,12 @@ public class ReleaseInventoryCommand {
 
     private Long orderId;
     private String orderNumber;
+    // order-service persists its OWN business orderNumber (ORD...) as the
+    // Order entity's orderNumber field — it is NOT the same as the saga's
+    // orderNumber (SAGA...) above. Without this, order-service's compensation
+    // consumer looks up by the wrong key and silently finds nothing, so the
+    // local order row never flips to CANCELLED.
+    private String businessOrderNumber;
     private String skuCode;
     private Integer quantity;
 }
