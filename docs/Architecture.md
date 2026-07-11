@@ -14,7 +14,7 @@ The order fulfillment workflow has been implemented using both Saga Choreography
 
 The diagram below illustrates the overall architecture of the system.
 
-> Insert `docs/images/overall-architecture.png`
+> Insert `docs/images/overall_architecture.png`
 
 The architecture consists of:
 

@@ -172,5 +172,5 @@ CANCELLED
 Refer to:
 
 ```
-docs/images/choreography-sequence.png
+docs/images/choreography_sequence.png
 ```

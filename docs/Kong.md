@@ -120,5 +120,5 @@ Backend Service
 A detailed request flow diagram is available in:
 
 ```
-docs/images/kong-flow.png
+docs/images/kong_flow.png
 ```

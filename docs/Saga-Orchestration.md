@@ -225,9 +225,9 @@ CANCELLED
 Refer to:
 
 ```
-docs/images/orchestration-sequence.png
+docs/images/orchestration_sequence_corrected.png
 ```
 
-**As of this revision, `orchestration-sequence.png` is being regenerated to match the Kafka-only
+**As of this revision, `orchestration_sequence_corrected.png` is being regenerated to match the Kafka-only
 flow described above** — the previous version of this diagram showed inventory reservation as a
 REST call, which does not match `SagaCommandProducer` / `SagaReserveInventoryCommandConsumer`.
